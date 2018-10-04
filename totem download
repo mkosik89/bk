@@ -1,0 +1,126 @@
+
+# coding: utf-8
+
+# In[126]:
+
+
+import os
+import time
+import urllib.request
+import urllib.parse
+import urllib.error
+import pandas as pd
+from lxml import objectify, etree
+import datetime
+from dateutil.relativedelta import relativedelta
+import csv
+
+
+# In[127]:
+
+
+today = datetime.date.today()
+sdate = datetime.date(2018,1,1)
+product="IR"
+service="Swaptions"
+subarea="USD"
+action="results"
+valuationdate=  "test" #str(row['date2'])
+filetype = "xml" # xml or xls (case sensitive)
+base_url = "https://totem.markit.com/api/unified/monthly/"  # PRODUCTION = https://totem.markit.com/api/unified/monthly
+filepath = "C:/Users/43715291/Code/Hist/Totem/RawHist/"   # Set your file path
+file = filepath + service + "_" + action + "_" + valuationdate + "." + filetype
+temp_xml = filepath + "TEMP.xml"
+url = base_url + product + "/" + service + "/" + subarea + "/" + action + "/dirlist" #+ filetype + "/" + valuationdate 
+url = base_url + product + "/" + service +  "/browse/" + action + "/2018-07/files" #+ filetype + "/" + valuationdate 
+
+
+# In[129]:
+
+
+dlist=[]
+
+
+# In[131]:
+
+
+while sdate <= today:
+    #result.append(current)
+    dlist.append(sdate.strftime("%Y-%m"))
+    print(sdate.strftime("%Y-%m"))
+    sdate += relativedelta(months=1)
+
+
+# In[132]:
+
+
+files=[]
+
+
+# In[133]:
+
+
+for dt in dlist:
+    
+    url = base_url + product + "/" + service +  "/browse/" + action + "/" + dt + "/files" 
+    params = {'USERNAME' : 'matthew.d.kosik@us.hsbc.com', 'PASSWORD' : r'Omakov84'} # Set your generic api account and password AqT_10*P}D
+    data = urllib.parse.urlencode(params)
+    data = data.encode('utf-8')
+    req = urllib.request.Request(url, data)
+    req.add_header('Content-type','application/x-www-form-urlencoded; charset=utf-8')
+    try:
+        response = urllib.request.urlopen(req, timeout=60)
+    except urllib.error.URLError as e:
+        if hasattr(e, 'reason'):
+            print('We have failed to reach the server:' , url, e.reason)
+            print('Reason: ', e.reason)
+        elif hasattr(e, 'code'):
+            print('Failed with the following error')
+            print('Error Code: ', e.code)
+    else:
+            #Everything is fine
+
+    # Open our local file for writing (write binary, creates file if doesn't exist)
+
+    # Write to our local file
+            local_file = open(temp_xml, "wb")
+            local_file.write(response.read())
+            local_file.close()
+
+    parser =etree.XMLParser(remove_blank_text = True)
+    tree = etree.parse(temp_xml,parser)
+    root = tree.getroot()
+
+    for elem in root.getiterator():
+        if not hasattr(elem.tag, 'find'): continue
+        i = elem.tag.find('}')
+        if i >= 0:
+            elem.tag = elem.tag[i+1:]
+    objectify.deannotate(root, cleanup_namespaces=True)
+
+    lst =[]
+    
+    for node in root:
+        if ("USD" in node[1].text and 'SWAPTIONS' in node[1].text and 'RESULTS' in node[1].text):
+            #print(node[1].text)
+            lst.append(node[1].text)            
+    if len(lst)!=0:
+        #print(lst)
+        outd = filepath + dt + "/"
+        outf = filepath + dt + "/"+ dt +"_dates.csv"
+        
+        if not os.path.exists(outd):
+            os.makedirs(outd)
+            
+        with open(outf, "w") as output:
+            writer = csv.writer(output, lineterminator='\n')   
+            for name in lst:
+                if ("USD" in name and 'SWAPTIONS' in name and 'RESULTS' in name and 'xls' in name and 'TradeData' not in name and 'Wildcard' not in name and 'Percentiles' not in name and 'Structures' not in name and 'newMAP' not in name and 'Analysis' not in name):
+                    writer.writerow([name])
+                    files.append(name)
+  
+        
+print("done")
+            
+    
+
