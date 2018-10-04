@@ -1,0 +1,82 @@
+
+# coding: utf-8
+
+# In[61]:
+
+
+import pandas as pd
+import os
+import sqlite3
+import sys
+import datetime
+import numpy as np
+
+import time
+import urllib.request
+import urllib.parse
+import urllib.error
+
+
+# In[62]:
+
+
+totem = r'C:\Users\43715291\Code\Hist\Totem'
+f = r'X:\Totem\2018\06\20180620\27540_ME_20180620_IR_SWAPTIONS_RESULTS_USD_40.xls'
+db_out = r'C:\Users\43715291\Code\Hist\Totem\raw.db'
+
+
+# In[66]:
+
+
+df = pd.DataFrame()
+
+
+# In[67]:
+
+
+params = {'USERNAME' : 'matthew.d.kosik@us.hsbc.com', 'PASSWORD' : r'Omakov84'} # Set your generic api account and password AqT_10*P}D
+data = urllib.parse.urlencode(params)
+data = data.encode('utf-8')
+
+
+# In[87]:
+
+
+for root, dirs, files in os.walk(totem):
+    for name in files:
+        if ("dates" in name and "SWAPS" not in name):
+            fname = root+"\\"+name
+            #print(root)
+            if os.path.isfile(fname):
+                print(fname)
+                df1 = pd.read_csv(fname,header=None) 
+                for num in df1[0]:
+                    print(num)
+                    if os.path.isfile((root + "/" + num)):
+                        print(num + " already exists")
+                    else:
+                        st_start = num.find("ME_")
+                        st_dt = num[st_start+3:st_start+11]
+                        u_dt = time.strftime("%Y-%m-%d",time.strptime(st_dt,"%Y%m%d"))
+                        url = "https://totem.markit.com/api/unified/monthly/IR/Swaptions/USD/results/xls/" + u_dt
+                        req = urllib.request.Request(url, data)
+                        req.add_header('Content-type','application/x-www-form-urlencoded; charset=utf-8')
+                        try:
+                            response = urllib.request.urlopen(req, timeout=160)
+                            print(url)
+                        except urllib.error.URLError as e:
+                            if hasattr(e, 'reason'):
+                                print('We have failed to reach the server:' , url, e.reason)
+                                print('Reason: ', e.reason)
+                            elif hasattr(e, 'code'):
+                                print('Failed with the following error')
+                                print('Error Code: ', e.code)
+                        else:
+                            file = root + "/" + num
+                            print(root)
+                            local_file = open(file, "wb")
+                            local_file.write(response.read())
+                            local_file.close()
+                            #df = df.append(df1)
+                            print(fname+" xls added")
+
