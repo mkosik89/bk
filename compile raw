@@ -1,0 +1,186 @@
+
+# coding: utf-8
+
+# In[1]:
+
+
+import pandas as pd
+import os
+import sqlite3
+import sys
+import datetime
+import numpy as np
+
+
+# In[2]:
+
+
+totem = r'C:\Users\43715291\Code\Hist\Totem'
+db_out = r'C:\Users\43715291\Code\Hist\Totem\raw.db'
+
+
+def apply_exp(df):
+    df['Tail'] = df['Tenor']/12
+    df['Tail']=df['Tail'].astype(str) + 'Y'
+    df['Exp'] = df['tst'].apply(datedif)
+
+
+
+def datedif(dt):
+        if dt <= 38:
+            return '1m'
+        elif dt <= 75:
+            return '2m'
+        elif dt <= 100:
+            return '3m'
+        elif dt<= 200:
+            return '6m'
+        elif dt<= 300:
+            return '9m'
+        elif dt<= 400:
+            return '1y'
+        elif dt<= 600:
+            return '18m'
+        elif dt<= 800:
+            return '2y'
+        elif dt<= 1200:
+            return '3y'
+        elif dt<= 1600:
+            return '4y'
+        elif dt <= 1900:
+            return '5y'
+        elif dt <= 2700:
+            return '7y'
+        elif dt <= 3800:
+            return '10y'
+        elif dt <= 4500:
+            return '12y'
+        elif dt <= 6000:
+            return '15y'
+        elif dt <= 8000:
+            return '20y'
+        elif dt <= 10000:
+            return '25y'
+        elif dt <= 12000:
+            return '30y'
+        else:
+            return 'other'
+
+
+header_list = ['ClientID',
+ 'ValuationDate',
+ 'AssetClass',
+ 'ServiceName',
+ 'ServiceFrequency',
+ 'SubArea',
+ 'SchemaVersion',
+ 'InstrumentType',
+ 'Currency',
+ 'Underlying',
+ 'OnshoreOffshore',
+ 'PricingTime',
+ 'CollateralConvention',
+ 'SettlementType',
+ 'PriceConvention',
+ 'Tenor',
+ 'ExerciseDate',
+ 'FinalMaturity',
+ 'ExerciseStyle',
+ 'OptionType',
+ 'StrikeRelative',
+ 'StrikeFixed',
+ 'SwapFixedDCC',
+ 'SwapFixedFrequency',
+ 'SwapFloatDCC',
+ 'SwapFloatFrequency',
+ 'ClientPrice',
+ 'ClientForward',
+ 'KnockOutPrice',
+ 'ConsensusPrice',
+ 'RangePrice',
+ 'NumberAcceptedPrice',
+ 'StandardDeviationPrice',
+ 'SkewnessPrice',
+ 'KurtosisPrice',
+ 'ConsensusForward',
+ 'RangeForward',
+ 'ClientImpliedVolatility',
+ 'ClientImpliedForward',
+ 'ClientImpliedDuration',
+ 'ImpliedConsensusVolatility',
+ 'ImpliedConsensusForward',
+ 'ImpliedConsensusDuration',
+ 'Percentile10Price',
+ 'Percentile90Price',
+ 'MAPScore',
+ 'StandardDeviationMAP',
+ 'NumberAcceptedMAP',
+ 'ClientDistributionBucket',
+ 'DistributionMinus4',
+ 'DistributionMinus3',
+ 'DistributionMinus2',
+ 'DistributionMinus1',
+ 'Distribution0',
+ 'DistributionPlus1',
+ 'DistributionPlus2',
+ 'DistributionPlus3',
+ 'DistributionPlus4']
+
+
+# In[4]:
+
+
+connex = sqlite3.connect(db_out)
+sql = "SELECT ValuationDate, Exp, Tail, StrikeRelative, ImpliedConsensusVolatility from data;"
+df0 = pd.read_sql_query(sql, connex,parse_dates = ['ValuationDate'])
+connex.close()
+
+
+# In[5]:
+
+
+df = pd.DataFrame()
+
+
+# In[6]:
+
+
+for root, dirs, files in os.walk(totem):
+    for name in files:
+        if ("USD" in name and 'SWAPTIONS' in name and 'RESULTS' in name and 'TradeData' not in name and 'Wildcard' not in name):
+            fname = root+"\\"+name
+            print(fname)
+            df1 = pd.read_excel(fname,sheetname="Data") 
+            for num in df1['ValuationDate'].unique():
+                if np.isin(num,(df0['ValuationDate'])):
+                    print(fname + " already exists")
+                else:
+                    df = df.append(df1)
+                    print(fname+" added")
+
+
+# In[11]:
+
+
+if df.empty:
+    print("empty")
+else:
+    print("not empty")
+    df['tst']=(df['ExerciseDate']-df['ValuationDate']).dt.days
+    apply_exp(df)
+    connex = sqlite3.connect(db_out)
+    cur = connex.cursor()
+    df.to_sql(name ="data", con = connex, if_exists="append", index =False)
+    connex.commit()
+    connex.close()
+
+
+# In[23]:
+
+
+
+
+
+# In[24]:
+
+
