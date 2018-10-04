@@ -1,0 +1,622 @@
+
+"""Matt's Bokeh App."""
+from bokeh.io import output_notebook, show, curdoc, push_notebook,output_file
+from bokeh.plotting import figure
+from bokeh.models import ColumnDataSource, Select, CategoricalColorMapper
+from bokeh.models.widgets import Dropdown, TextInput, Tabs, Panel, Button, Div
+from bokeh.layouts import widgetbox, column, row
+from bokeh.models import HoverTool
+from ipywidgets import interact
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import os
+import sqlite3
+import sys
+
+import seaborn as sns; sns.set()
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, r2_score
+
+#from scripts.rv_df import build_tab1
+#from scripts.reg import reg_out
+
+#from scripts.pca_panel import pca_panel
+#from scripts.steps import steps_panel
+
+#------------Get Raw Data-------------
+
+raw_db = r'C:\Users\43715291\Code\Hist\Totem\raw.db'
+
+sql = "SELECT ValuationDate, Exp, Tail, StrikeRelative, ImpliedConsensusVolatility, ImpliedConsensusForward, ConsensusPrice from data;"
+
+connex = sqlite3.connect(raw_db)
+df = pd.read_sql_query(sql, connex,parse_dates = ['ValuationDate'])
+connex.close()
+
+#----------Define data--------------
+
+rv_data_select = { 
+    "Totem nVol" : "ImpliedConsensusVolatility",
+    "Totem Fwd" : "ImpliedConsensusForward",
+    "Totem Price" : "ConsensusPrice"}
+
+reg_data_select = { 
+    "Totem nVol" : "ImpliedConsensusVolatility",
+    "Totem Fwd" : "ImpliedConsensusForward",
+    "Totem Price" : "ConsensusPrice"}
+
+
+
+df=df.sort_values(by=['ValuationDate'])
+df = df.round({'ImpliedConsensusVolatility':5,'ImpliedConsensusForward':5,'ConsensusPrice':5 })
+df = df.drop_duplicates()
+df_target = pd.DataFrame()
+
+
+#--------------------Set up Regression-----------------------
+
+model = LinearRegression(fit_intercept=True)
+
+#---------------Build RV Page------------
+
+tails = ['1.0Y',
+    '2.0Y',
+    '3.0Y',
+    '4.0Y',
+    '5.0Y',
+    '6.0Y',
+    '7.0Y',
+    '8.0Y',
+    '9.0Y',
+    '10.0Y',
+    '15.0Y',
+    '20.0Y',    
+    '25.0Y',
+    '30.0Y'
+    ]
+
+Exp = ['1m',
+    '2m',
+    '3m',
+    '6m',
+    '9m',
+    '1y',
+    '18m',
+    '2y',
+    '3y',
+    '4y',
+    '5y',
+    '7y',
+    '10y',
+    '12y',
+    '15y',
+    '20y',
+    '25y',
+    '30y'    
+    ]
+
+
+def sort_strikes(df):
+    sort  = df['StrikeRelative'].unique()
+    sort2 = [0 if x == 'ATM' else x for x in sort]
+
+    #sort2 = list(map(int,sort2))
+    sort2 = pd.to_numeric(sort2,errors='ignore')
+    sort2 = np.unique(sort2)
+    sort2 = sort2.astype(int)
+    sort2.sort()
+    sort2 = list(map(str,sort2))
+    sort2 = ['ATM' if x == '0' else x for x in sort2]
+    return sort2
+
+
+source = ColumnDataSource(data=dict(x=[],y=[]))
+#skews = df['StrikeRelative'].unique().tolist()
+skews = sort_strikes(df)
+
+#----------RV Boxes-------------
+rv_data = Select(title = "Choose Data:", options=list(rv_data_select.keys()), value="Totem nVol")
+wt1 = TextInput(title="Weight", value='1.0', width = 100)
+menu1_1 = Select(options=Exp,value='1y',title='Expiry')
+menu1_2 = Select(options=tails,value='5.0Y',title='Tail')
+menu1_3 = Select(options=skews,value='ATM',title='Strike')
+wt2 = TextInput(title="Weight", value='0', width = 100)
+menu2_1 = Select(options=Exp,value='1y',title='Expiry')
+menu2_2 = Select(options=tails,value='10.0Y',title='Tail')
+menu2_3 = Select(options=skews,value='ATM',title='Strike')
+wt3 = TextInput(title="Weight", value='0',width = 100)
+menu3_1 = Select(options=Exp,value='1y',title='Expiry')
+menu3_2 = Select(options=tails,value='5.0Y',title='Tail')
+menu3_3 = Select(options=skews,value='ATM',title='Strike')
+wt4 = TextInput(title="Weight", value='0', width = 100)
+menu4_1 = Select(options=Exp,value='1y',title='Expiry')
+menu4_2 = Select(options=tails,value='20.0Y',title='Tail')
+menu4_3 = Select(options=skews,value='ATM',title='Strike')
+
+graph_button = Button(label="Update Graphs",button_type = "primary")
+
+#------------Regression Boxes---------------
+reg_data = Select(title = "Choose Data:", options=list(rv_data_select.keys()), value="Totem nVol")
+reg_wt1 = TextInput(title="Weight", value='1.0', width = 100)
+reg_menu1_1 = Select(options=Exp,value='1y',title='Expiry')
+reg_menu1_2 = Select(options=tails,value='5.0Y',title='Tail')
+reg_menu1_3 = Select(options=skews,value='ATM',title='Strike')
+reg_wt2 = TextInput(title="Weight", value='0', width = 100)
+reg_menu2_1 = Select(options=Exp,value='1y',title='Expiry')
+reg_menu2_2 = Select(options=tails,value='10.0Y',title='Tail')
+reg_menu2_3 = Select(options=skews,value='ATM',title='Strike')
+reg_wt3 = TextInput(title="Weight", value='0',width = 100)
+reg_menu3_1 = Select(options=Exp,value='1y',title='Expiry')
+reg_menu3_2 = Select(options=tails,value='5.0Y',title='Tail')
+reg_menu3_3 = Select(options=skews,value='ATM',title='Strike')
+reg_wt4 = TextInput(title="Weight", value='0', width = 100)
+reg_menu4_1 = Select(options=Exp,value='1y',title='Expiry')
+reg_menu4_2 = Select(options=tails,value='20.0Y',title='Tail')
+reg_menu4_3 = Select(options=skews,value='ATM',title='Strike')
+
+graph_button_reg = Button(label="Update Graphs",button_type = "primary")
+stats = Div(text='TEST', width=500)
+
+#----------Graph Line--------------
+
+p1 = figure(x_axis_type="datetime",plot_width=800, plot_height=300, tools='crosshair,wheel_zoom,box_zoom,reset')
+p1.add_tools(HoverTool(
+    tooltips=[( 'Date',"@x{%m-%d-%y}"), ("Value", '@y')],
+    formatters={'x': 'datetime'},
+    mode='vline'
+))
+p1.line(x="x",y="y", source=source)
+p1.title.text = rv_data.value
+p1.title.align = "center"
+p1.title.text_font_size = "25px"
+
+#---------------------------------------------------------------------
+#---------------------------------------------------------------------
+
+#------------Update Data-----------------
+
+
+def update_target(df):
+
+    typ = rv_data_select[rv_data.value]
+
+    df1=select_data1(df)
+    df2=select_data2(df)
+    df3=select_data3(df)
+    df4=select_data4(df)
+
+    t = df1['ValuationDate']
+    
+    
+
+    if wt2.value == "0":
+        df1['tgt_out']=df1[typ+'_1']*float(wt1.value)
+        return df1
+    elif wt3.value =="0":
+        i = pd.merge(df1, df2, on=['ValuationDate'])
+        i['tgt_out']=i[typ + "_1"]*float(wt1.value) + i[typ + "_2"]*float(wt2.value)
+        return i
+    elif wt4.value =="0":
+        i= pd.merge(df1, df2, on=['ValuationDate'])
+        j= pd.merge(i, df3, on=['ValuationDate'])
+        j['tgt_out']=j[typ + "_1"]*float(wt1.value) + j[typ + "_2"]*float(wt2.value) + j[typ + "_3"]*float(wt3.value)
+        return j
+    else:
+        i= pd.merge(df1, df2, on=['ValuationDate'])
+        j= pd.merge(i, df3, on=['ValuationDate'])
+        k =pd.merge(j, df4, on=['ValuationDate'])
+        k['tgt_out']=k[typ + "_1"]*float(wt1.value) + k[typ + "_2"]*float(wt2.value) + k[typ + "_3"]*float(wt3.value)+ k[typ + "_4"]*float(wt4.value)
+        return k
+
+
+def update_target_reg(df):
+
+    typ = reg_data_select[reg_data.value]
+
+    df1=select_reg1(df)
+    df2=select_reg2(df)
+    df3=select_reg3(df)
+    df4=select_reg4(df)
+
+    t = df1['ValuationDate']
+    
+    
+
+    if reg_wt2.value == "0":
+        
+        df1['reg_out']=df1[typ+'_1']*float(reg_wt1.value)
+        return df1
+    elif reg_wt3.value =="0":
+        i = pd.merge(df1, df2, on=['ValuationDate'])
+        i['reg_out']=i[typ + "_1"]*float(reg_wt1.value) + i[typ + "_2"]*float(reg_wt2.value)
+        return i
+    elif reg_wt4.value =="0":
+        i= pd.merge(df1, df2, on=['ValuationDate'])
+        j= pd.merge(i, df3, on=['ValuationDate'])
+        j['reg_out']=j[typ + "_1"]*float(reg_wt1.value) + j[typ + "_2"]*float(reg_wt2.value) + j[typ + "_3"]*float(reg_wt3.value)
+        return j
+    else:
+        i= pd.merge(df1, df2, on=['ValuationDate'])
+        j= pd.merge(i, df3, on=['ValuationDate'])
+        k =pd.merge(j, df4, on=['ValuationDate'])
+        k['reg_out']=k[typ + "_1"]*float(reg_wt1.value) + k[typ + "_2"]*float(reg_wt2.value) + k[typ + "_3"]*float(reg_wt3.value)+ k[typ + "_4"]*float(reg_wt4.value)
+        return k
+
+#----------------Update Plots------------------------
+
+def update_plots(k,j):
+    #tgt  = (k['ImpliedConsensusVolatility_1']*float(wt1.value) + k['ImpliedConsensusVolatility_2']*float(wt2.value) + k['ImpliedConsensusVolatility_3']*float(wt3.value) + k['ImpliedConsensusVolatility_4']*float(wt4.value))
+    #tgt  = (k[rv_data_select[rv_data.value] + "_1"]*float(wt1.value) + k[rv_data_select[rv_data.value] + "_2"]*float(wt2.value) + k[rv_data_select[rv_data.value] + "_3"]*float(wt3.value) + k[rv_data_select[rv_data.value] + "_4"]*float(wt4.value))
+    # tgt  = k['tgt_out']
+    # reg_tgt  = j['reg_out']
+
+    out = pd.merge(k, j, on=['ValuationDate'],how="inner")
+
+    out = out.drop_duplicates()
+    
+    tgt = out['tgt_out']
+    reg_x = out['reg_out']
+
+    dfcolor =[]
+
+    for row in out['ValuationDate']:
+        if row ==max(out['ValuationDate']):
+            dfcolor.append('red')
+        elif str(row.year) =='2018':
+            dfcolor.append('blue')
+        else:
+            dfcolor.append('green')
+    out['color'] =dfcolor
+
+
+    reg_model = model.fit(reg_x[:, np.newaxis], tgt)
+    reg_y = model.predict(reg_x[:, np.newaxis])
+
+    source.data = dict(
+    x=out['ValuationDate'],
+    y=out['tgt_out']
+    )
+
+    source_reg.data = dict(
+    x=out['reg_out'],
+    y=out['tgt_out'],
+    z=out['ValuationDate'],
+    color = out['color']
+    )
+
+    reg_line.data = dict(
+    x=reg_x,
+    y=reg_y,
+    z=out['ValuationDate']
+    )
+     
+    r2 = r2_score(tgt, reg_y)
+    slope  = reg_model.coef_
+    intercept = reg_model.intercept_
+
+    out['Resid']= tgt - (slope * out['reg_out'] + intercept) 
+
+    resid_line.data = dict(
+    x=out['ValuationDate'],
+    y=out['Resid']
+    )
+
+    update_stats(r2,slope,intercept)
+
+    graph_button.button_type = "success"
+    graph_button_reg.button_type = "success"
+
+def update_stats(stat1, stat2, stat3):
+
+    stats.text = ("<b>R2: " + str(stat1) + "</b><br/>" + 
+                "Slope= " + str(stat2) + "<br/>" +
+                "Intercept = " + str(stat3))
+
+    
+def update(df,df_target):
+    df_target = update_target(df)
+    df_reg = update_target_reg(df)
+    update_plots(df_target,df_reg)
+    update_skew(df)
+    p1.title.text =rv_data.value
+    
+    
+    
+#-------------Filter RV Data--------------
+
+def select_data1(df):
+    typ = rv_data_select[rv_data.value]
+    selected = df[
+        (df["Exp"]==menu1_1.value)&
+        (df["Tail"]==menu1_2.value)&
+        (df["StrikeRelative"]==menu1_3.value)
+    ]
+    
+    selected  = selected.loc[:, lambda df: ['ValuationDate', typ]]
+    selected = selected.rename(index=str, columns={typ: typ +"_1"})
+    selected = selected.dropna()
+    return selected
+
+def select_data2(df):
+    typ = rv_data_select[rv_data.value]
+    selected = df[
+        (df["Exp"]==menu2_1.value)&
+        (df["Tail"]==menu2_2.value)&
+        (df["StrikeRelative"]==menu2_3.value)
+    ]
+    
+    selected  = selected.loc[:, lambda df: ['ValuationDate', typ]]
+    selected = selected.rename(index=str, columns={typ: typ +"_2"})
+    selected = selected.dropna()
+    return selected
+
+def select_data3(df):
+    typ = rv_data_select[rv_data.value]
+    selected = df[
+        (df["Exp"]==menu3_1.value)&
+        (df["Tail"]==menu3_2.value)&
+        (df["StrikeRelative"]==menu3_3.value)
+    ]
+    
+    selected  = selected.loc[:, lambda df: ['ValuationDate', typ]]
+    selected = selected.rename(index=str, columns={typ: typ +"_3"})
+    selected = selected.dropna()
+    return selected
+
+def select_data4(df):
+    typ = rv_data_select[rv_data.value]
+    selected = df[
+        (df["Exp"]==menu4_1.value)&
+        (df["Tail"]==menu4_2.value)&
+        (df["StrikeRelative"]==menu4_3.value)
+    ]
+    
+    selected  = selected.loc[:, lambda df: ['ValuationDate', typ]]
+    selected = selected.rename(index=str, columns={typ: typ +"_4"})
+    selected = selected.dropna()
+    return selected
+
+#----------------Filter Regression Data---------------
+
+def select_reg1(df):
+    typ = reg_data_select[reg_data.value]
+    selected = df[
+        (df["Exp"]==reg_menu1_1.value)&
+        (df["Tail"]==reg_menu1_2.value)&
+        (df["StrikeRelative"]==reg_menu1_3.value)
+    ]
+    
+    selected  = selected.loc[:, lambda df: ['ValuationDate', typ]]
+    selected = selected.rename(index=str, columns={typ: typ +"_1"})
+    selected = selected.drop_duplicates()
+    selected = selected.dropna()
+    return selected
+
+def select_reg2(df):
+    typ = reg_data_select[reg_data.value]
+    selected = df[
+        (df["Exp"]==reg_menu2_1.value)&
+        (df["Tail"]==reg_menu2_2.value)&
+        (df["StrikeRelative"]==reg_menu2_3.value)
+    ]
+    
+    selected  = selected.loc[:, lambda df: ['ValuationDate', typ]]
+    selected = selected.rename(index=str, columns={typ: typ +"_2"})
+    selected = selected.drop_duplicates()
+    selected = selected.dropna()
+    return selected
+
+def select_reg3(df):
+    typ = reg_data_select[reg_data.value]
+    selected = df[
+        (df["Exp"]==reg_menu3_1.value)&
+        (df["Tail"]==reg_menu3_2.value)&
+        (df["StrikeRelative"]==reg_menu3_3.value)
+    ]
+    
+    selected  = selected.loc[:, lambda df: ['ValuationDate', typ]]
+    selected = selected.rename(index=str, columns={typ: typ +"_3"})
+    selected = selected.drop_duplicates()
+    selected = selected.dropna()
+    return selected
+
+def select_reg4(df):
+    typ = reg_data_select[reg_data.value]
+    selected = df[
+        (df["Exp"]==reg_menu4_1.value)&
+        (df["Tail"]==reg_menu4_2.value)&
+        (df["StrikeRelative"]==reg_menu4_3.value)
+    ]
+    
+    selected  = selected.loc[:, lambda df: ['ValuationDate', typ]]
+    selected = selected.rename(index=str, columns={typ: typ +"_4"})
+    selected = selected.drop_duplicates()
+    selected = selected.dropna()
+    return selected
+
+
+
+def update_skew(df):
+
+    A = df[
+        (df["Exp"]==menu1_1.value)&
+        (df["Tail"]==menu1_2.value)
+    ]
+
+    reg_A = df[
+        (df["Exp"]==reg_menu1_1.value)&
+        (df["Tail"]==reg_menu1_2.value)
+    ]
+
+    B = df[
+        (df["Exp"]==menu2_1.value)&
+        (df["Tail"]==menu2_2.value)
+    ]
+
+    reg_B = df[
+        (df["Exp"]==reg_menu2_1.value)&
+        (df["Tail"]==reg_menu2_2.value)
+    ]
+    
+    C = df[
+        (df["Exp"]==menu3_1.value)&
+        (df["Tail"]==menu3_2.value)
+    ]
+
+    reg_C = df[
+        (df["Exp"]==reg_menu3_1.value)&
+        (df["Tail"]==reg_menu3_2.value)
+    ]
+
+
+    D = df[
+        (df["Exp"]==menu4_1.value)&
+        (df["Tail"]==menu4_2.value)
+    ]
+
+    reg_D = df[
+        (df["Exp"]==reg_menu4_1.value)&
+        (df["Tail"]==reg_menu4_2.value)
+    ]
+    
+    menu1_3.options = sort_strikes(A)   
+    menu2_3.options = sort_strikes(B)    
+    menu3_3.options = sort_strikes(C)
+    menu4_3.options = sort_strikes(D)
+
+    reg_menu1_3.options = sort_strikes(reg_A)   
+    reg_menu2_3.options = sort_strikes(reg_B)    
+    reg_menu3_3.options = sort_strikes(reg_C)
+    reg_menu4_3.options = sort_strikes(reg_D)
+
+def update_buttons():
+    update_skew(df)
+    graph_button.button_type = "warning"
+    graph_button_reg.button_type = "warning"
+
+#-------------------Run Regression--------------------
+
+
+
+#--------------------Group Controls-------------------
+
+controls0 = [rv_data]
+controls1 = [wt1,menu1_1,menu1_2,menu1_3]
+controls2 = [wt2,menu2_1,menu2_2,menu2_3]
+controls3 = [wt3,menu3_1,menu3_2,menu3_3]
+controls4 = [wt4,menu4_1,menu4_2,menu4_3]
+
+reg_controls0 = [reg_data]
+reg_controls1 = [reg_wt1,reg_menu1_1,reg_menu1_2,reg_menu1_3]
+reg_controls2 = [reg_wt2,reg_menu2_1,reg_menu2_2,reg_menu2_3]
+reg_controls3 = [reg_wt3,reg_menu3_1,reg_menu3_2,reg_menu3_3]
+reg_controls4 = [reg_wt4,reg_menu4_1,reg_menu4_2,reg_menu4_3]
+
+for control in controls0:
+    control.on_change('value', lambda attr, old, new: update_buttons())
+for control in controls1:
+    control.on_change('value', lambda attr, old, new: update_buttons())
+for control in controls2:
+    control.on_change('value', lambda attr, old, new: update_buttons())
+for control in controls3:
+    control.on_change('value', lambda attr, old, new: update_buttons())
+for control in controls4:
+    control.on_change('value', lambda attr, old, new: update_buttons())
+
+for control in reg_controls0:
+    control.on_change('value', lambda attr, old, new: update_buttons())
+for control in reg_controls1:
+    control.on_change('value', lambda attr, old, new: update_buttons())
+for control in reg_controls2:
+    control.on_change('value', lambda attr, old, new: update_buttons())
+for control in reg_controls3:
+    control.on_change('value', lambda attr, old, new: update_buttons())
+for control in reg_controls4:
+    control.on_change('value', lambda attr, old, new: update_buttons())
+
+
+wb0 = widgetbox(controls0)
+wb1 = widgetbox(controls1, width = 100)
+wb2 = widgetbox(controls2, width = 100)
+wb3 = widgetbox(controls3, width = 100)
+wb4 = widgetbox(controls4, width = 100)
+
+reg_wb0 = widgetbox(reg_controls0)
+reg_wb1 = widgetbox(reg_controls1, width = 100)
+reg_wb2 = widgetbox(reg_controls2, width = 100)
+reg_wb3 = widgetbox(reg_controls3, width = 100)
+reg_wb4 = widgetbox(reg_controls4, width = 100)
+
+
+#----------------Build Regression Plotter----------------
+
+
+source_reg = ColumnDataSource(data=dict(x=[],y=[],z=[],color=[]))
+resid_line = ColumnDataSource(data=dict(x=[],y=[]))
+reg_line = ColumnDataSource(data=dict(x=[],y=[],z=[]))
+
+color_mapper = CategoricalColorMapper(factors = ['red','blue','green'],
+                                        palette=['red','blue','green'])
+
+
+p_reg = figure(plot_width=800, plot_height=300,tools='crosshair,wheel_zoom,box_zoom,reset')
+
+p_resid = figure(plot_width=800, plot_height=300,x_axis_type="datetime",tools='crosshair,wheel_zoom,box_zoom,reset')
+
+p_resid.title.text = "Error"
+
+p_reg.background_fill_color = "seashell"
+p_reg.background_fill_alpha = 0.3
+p_reg.outline_line_width = 5
+p_reg.outline_line_alpha = 0.3
+p_reg.outline_line_color = "firebrick"
+
+p_resid.background_fill_color = "seashell"
+p_resid.background_fill_alpha = 0.3
+p_resid.outline_line_width = 5
+p_resid.outline_line_alpha = 0.3
+p_resid.outline_line_color = "firebrick"
+
+p_reg.scatter("x","y",source=source_reg, color = dict(field='color', transform = color_mapper))
+
+p_reg.line(x="x",y="y", source = reg_line,line_color ='firebrick' )
+
+p_resid.line(x="x",y="y", source = resid_line, line_color ='black')
+
+p_reg.add_tools(HoverTool(
+    tooltips=[( 'Target',"@x"), ("Value", '@y'),( 'Date',"@z{%m-%d-%y}")],
+    formatters={'z': 'datetime'}
+    #mode='vline'
+    ))
+
+
+
+#----------------Define Buttons----------------------
+
+graph_button.on_click(lambda: update(df,df_target))
+graph_button_reg.on_click(lambda: update(df,df_target))
+
+#-----------------Assemble Layouts and Tabs---------------------
+
+column0 = column(wb0,graph_button)
+column1 = column(wb1)
+column2 = column(wb2)
+column3 = column(wb3)
+column4 = column(wb4)
+layout = column(row(column0,column1,column2, column3, column4),p1)
+
+reg_column0 = column(reg_wb0,graph_button_reg)
+reg_column1 = column(reg_wb1)
+reg_column2 = column(reg_wb2)
+reg_column3 = column(reg_wb3)
+reg_column4 = column(reg_wb4)
+reg_layout = column(row(reg_column0,reg_column1,reg_column2, reg_column3, reg_column4),p_reg,stats,p_resid)
+
+
+tab1 = Panel(child=layout,title="RV Plotter")
+tab2 = Panel(child=reg_layout,title="Regression")
+
+tabs = Tabs(tabs=[tab1,tab2])
+
+curdoc().add_root(tabs)
